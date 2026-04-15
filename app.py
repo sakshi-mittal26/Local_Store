@@ -1,47 +1,65 @@
-from flask import Flask, render_template, redirect, url_for
-import pymysql
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
+from flask import Flask, render_template, request, redirect
+import sqlite3
 
 app = Flask(__name__)
 
-conn = pymysql.connect(
-    host=os.getenv("DB_HOST"),
-    user=os.getenv("DB_USER"),
-    password=os.getenv("DB_PASSWORD"),
-    database=os.getenv("DB_NAME"),
-    cursorclass=pymysql.cursors.DictCursor
-)
+def get_connection():
+    conn = sqlite3.connect("employees.db")
+    conn.row_factory = sqlite3.Row
+    return conn
 
-@app.route("/")
-def index():
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM products")
-    products = cursor.fetchall()
-    cursor.close()
-    return render_template("index.html", products=products)
-
-@app.route("/add-to-cart/<int:product_id>")
-def add_to_cart(product_id):
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO cart (product_id) VALUES (%s)", (product_id,))
-    conn.commit()
-    cursor.close()
-    return redirect(url_for("index"))
-
-@app.route("/cart")
-def cart():
+# create table
+def init_db():
+    conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT products.name, products.price
-        FROM cart
-        JOIN products ON cart.product_id = products.id
+        CREATE TABLE IF NOT EXISTS employees (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            email TEXT,
+            position TEXT
+        )
     """)
-    items = cursor.fetchall()
-    cursor.close()
-    return render_template("cart.html", items=items)
+    conn.commit()
+    conn.close()
+
+init_db()
+
+@app.route('/')
+def home():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM employees")
+    employees = cursor.fetchall()
+    conn.close()
+    return render_template('employees.html', employees=employees)
+
+@app.route('/add', methods=['POST'])
+def add():
+    name = request.form.get('name')
+    email = request.form.get('email')
+    position = request.form.get('position')
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO employees (name, email, position) VALUES (?, ?, ?)",
+        (name, email, position)
+    )
+    conn.commit()
+    conn.close()
+
+    return redirect('/')
+
+@app.route('/delete/<int:id>')
+def delete(id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM employees WHERE id=?", (id,))
+    conn.commit()
+    conn.close()
+
+    return redirect('/')
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
